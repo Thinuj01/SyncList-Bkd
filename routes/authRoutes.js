@@ -7,6 +7,9 @@ const authMiddleware = require('../middleware/authMiddleware');
 const multer = require('multer');
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
 const cloudinary = require('cloudinary').v2;
+const Otp = require('../models/Otp'); 
+const nodemailer = require('nodemailer');
+const randomstring = require('randomstring');
 
 cloudinary.config({
     cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -24,6 +27,14 @@ const storage = new CloudinaryStorage({
 });
 
 const upload = multer({ storage: storage });
+
+const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS
+    }
+});
 
 //POST /api/auth/register
 router.post('/register',async (req,res)=>{
@@ -102,6 +113,7 @@ router.post('/login', async(req,res) => {
     }
 });
 
+//GET api/auth/ get details of logged user
 router.get('/',authMiddleware ,async(req,res) => {
     try{
         const user = await User.findById(req.userId).select('email username _id');
@@ -145,6 +157,98 @@ router.put('/profile', authMiddleware, upload.single('profilePicture'), async (r
     } catch (error) {
         console.error('Cloudinary Upload Error:', error);
         res.status(500).json({ message: 'Server Error during Cloudinary update.' });
+    }
+});
+
+//POST api/auth/otp send a otp to user mail
+router.post('/otp', async(req,res) => {
+    try{
+        const {email} = req.body;
+
+        if(!email){
+            return res.status(400).json({message: 'Email Required.'});
+        }
+
+        const user = await User.findOne({email});
+        if(!user){
+            return res.status(404).json({message: 'No Account found with that mail'});
+        }
+
+        const otp = randomstring.generate({
+            length:6,
+            charset: 'numeric'
+        });
+
+        await Otp.create({
+            email: email,
+            code: otp
+        });
+
+        const mailOptions = {
+            from: process.env.EMAIL_USER,
+            to: email,
+            subject: 'SyncList Password Reset Code',
+            html: `
+                <p>Hello ${user.username},</p>
+                <p>Use the following code to reset your SyncList password. This code will expire in 5 minutes:</p>
+                <h2 style="color: #2A7886;">${otp}</h2>
+                <p>If you did not request this, please ignore this email.</p>
+            `,
+        };
+
+        await transporter.sendMail(mailOptions);
+
+        res.status(200).json({
+            message: 'OTP code sent to your mail.',
+            email: email
+        });
+    }
+    catch(error){
+        console.error("OTP Error:", error);
+        res.status(500).json({ message: error.message });
+    }
+});
+
+//POST api/auth/otp-verify In here user sended otp compares to DB otp
+router.post('/otp-verify',async(req,res) => {
+    try{
+        const {email,otp} = req.body;
+
+        if(!email || !otp) {
+            return res.status(400).json({message: 'Email and OTP code required.'});
+        }
+
+        const otpRecord = await Otp.findOne({
+            email: email,
+            code: otp
+        });
+
+        if(!otpRecord){
+            return res.status(400).json({message: 'Invalid or expired OTP code.'});
+        }
+
+        const user = await User.findOne({email});
+        if(!user){
+            return res.status(404).json({message: 'User not found'});
+        }
+
+        const resetToken = jwt.sign(
+            { userId: user._id, purpose: 'password_reset' },
+            process.env.JWT_SECRET,
+            { expiresIn: '15m' } 
+        );
+
+        res.status(200).json({ 
+            message: 'OTP verified. Proceed to password reset.',
+            resetToken: resetToken
+        });
+
+        await Otp.deleteOne({_id: otpRecord._id});
+
+    }
+    catch{
+        console.error("OTP Error:", error);
+        res.status(500).json({ message: error.message });
     }
 });
 

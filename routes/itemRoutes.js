@@ -57,7 +57,7 @@ router.get('/:id',authMiddleware, async(req, res) => {
             path: 'items', 
             populate: {
                 path: 'claimedBy', 
-                select: 'username'
+                select: 'username profilePictureUrl'
             }
         })
         .populate({
@@ -153,7 +153,7 @@ router.put('/claim/:id', authMiddleware, async(req,res) => {
 
         const updatedItem = await Item.findById(item._id).populate({
             path: 'claimedBy',
-            select: 'username'
+            select: 'username profilePictureUrl'
         });
 
         const io = req.app.get('socketio');
