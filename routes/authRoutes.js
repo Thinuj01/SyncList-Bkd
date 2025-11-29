@@ -252,4 +252,32 @@ router.post('/otp-verify',async(req,res) => {
     }
 });
 
+router.post('/fwd',authMiddleware,async(req,res)=>{
+    try{
+        const {password} = req.body;
+        if(!password){
+            return res.status(400).json({message: "New Password Requiered."});
+        }
+
+        const user = await User.findById(req.userId);
+        if(!user){
+            return res.status(404).json({message: "User not Found."});
+        }
+
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(password, salt);
+
+        user.password = hashedPassword;
+
+        await user.save();
+
+        return res.status(201).json({message: "User password changed successfully"});
+
+    }
+    catch{
+        console.error("OTP Error:", error);
+        res.status(500).json({ message: error.message });
+    }
+});
+
 module.exports = router;
