@@ -116,7 +116,7 @@ router.post('/login', async(req,res) => {
 //GET api/auth/ get details of logged user
 router.get('/',authMiddleware ,async(req,res) => {
     try{
-        const user = await User.findById(req.userId).select('email username _id');
+        const user = await User.findById(req.userId).select('email username _id profilePictureUrl');
 
         if(!user){
             return res.status(400).json({message: 'User not found'});
